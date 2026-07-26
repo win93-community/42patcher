@@ -1,5 +1,5 @@
 import { checksum } from "/42/lib/algo/checksum.js";
-import { dialog } from "/42/ui/layout/dialog.js";
+import { dialog, confirm } from "/42/ui/layout/dialog.js";
 import { toast } from "/42/ui/layout/toast.js";
 import { JSON5 } from "/42/formats/data/JSON5.js";
 import { http } from "/42/api/http.js";
@@ -11,6 +11,7 @@ const { parse } = JSON5;
 const BASE_URL = "https://win93.xyz";
 const PATCHES_URL = "https://win93.xyz/patches.json5";
 const STORAGE_PATH = "~/config/42patcher.json5";
+const STORAGE_PATCHES_PATH = "~/config/42patcher-patches.json5";
 
 let patches = [];
 let patchState = {};
@@ -34,8 +35,34 @@ function displayedPatchFiles(patch) {
 async function loadPatches() {
   const res = await http.get(PATCHES_URL);
   const text = await res.text();
-  patches = parse(text);
-  if (!Array.isArray(patches)) patches = [];
+  const networkPatches = parse(text);
+  if (!Array.isArray(networkPatches)) return;
+
+  let saved = null;
+  try {
+    saved = await fs.readJSON5(STORAGE_PATCHES_PATH);
+  } catch {}
+
+  if (!saved || !Array.isArray(saved) || patchesDiffer(networkPatches, saved)) {
+    const useNew = await confirm("New patches available. Use updated patchlist?", {
+      label: "42patcher",
+      picto: "settings",
+    });
+    if (useNew) {
+      await fs.write(STORAGE_PATCHES_PATH, JSON5.stringify(networkPatches));
+      patches = networkPatches;
+    } else if (saved) {
+      patches = saved;
+    } else {
+      patches = [{
+        id: "no_patches",
+        description: "No patches available. Reopen 42patcher to check for updates.",
+        files: [],
+      }]
+    }
+  } else {
+    patches = saved;
+  }
 
   for (const patch of patches) {
     const files = getPatchFiles(patch);
@@ -58,7 +85,7 @@ async function fetchPatchContent(patchPath) {
 async function enablePatch(patch) {
   for (const file of getPatchFiles(patch)) {
     if (file.path && file.patch) {
-      await toast("Applying patch: " + file.path, { label: "42patcher" });
+      //await toast("Applying patch: " + file.path, { label: "42patcher" });
       const content = await fetchPatchContent(file.patch);
       await fs.write(file.path, content);
       await toast("Patch applied: " + file.path, { label: "42patcher" });
@@ -70,7 +97,7 @@ async function disablePatch(patch) {
   for (const file of getPatchFiles(patch)) {
     if (file.path) {
       try {
-        await toast("Restoring original file: " + file.path, { label: "42patcher" });
+        //await toast("Restoring original file: " + file.path, { label: "42patcher" });
         const res = await http.get(file.path, {
           fresh: true,
           ignoreFileSystem: true,
@@ -90,7 +117,9 @@ async function disablePatch(patch) {
 function buildContent() {
   return patches.map((patch) => ({
     tag: "fieldset",
-    style: { scrollbarWidth: "none" }, //@TODO find sys42 class for this
+
+    // prevent fieldset from stretching to fill dialog height
+    style: { flex: "0 0 auto" }, //@TODO find sys42 class for this
     label: patch.id,
     content: [
       {
@@ -103,14 +132,17 @@ function buildContent() {
               {
                 tag: "br",
               },
-              patch.description,
+              `%md ${patch.description}`,
             ],
           },
 
           {
-            tag: "checkbox", //cant add .shrink
+            tag: "checkbox",
             label: "Enable",
             value: Boolean(patchState[patch.id]),
+            created(el) {
+              el.parentElement?.classList.add("shrink"); // hacky workaround to apply class to checkbox wrapper
+            },
             action(e, el) {
               patchState[patch.id] = el.checked;
               if (el.checked) enablePatch(patch);
@@ -121,6 +153,19 @@ function buildContent() {
       },
     ],
   }));
+}
+
+function patchIds(list) {
+  return [...list].map((p) => p.id).sort();
+}
+
+function patchesDiffer(a, b) {
+  const arrA = Array.from(a || []);
+  const arrB = Array.from(b || []);
+  if (arrA.length !== arrB.length) return true;
+  const idsA = patchIds(arrA);
+  const idsB = patchIds(arrB);
+  return idsA.some((id, i) => id !== idsB[i]);
 }
 
 export async function launchApp(app) {
@@ -144,16 +189,9 @@ export async function launchApp(app) {
     height: 400,
     minHeight: 400,
     content: buildContent(),
+    footer: "42patcher may break your system. Use at your own risk.",
   });
 
   //console.dir(win)
 
-  // @TODO fix this hacky work around - form shortcuts dont support classes
-/*
-  win.addEventListener("ui.render", () => {
-    for (const checkbox of document.querySelectorAll("fieldset > div > div.control-box.control-box--checkbox")) {
-      console.log("checkbox", checkbox);
-      checkbox.classList.add("shrink");
-    }
-  });*/
 }
