@@ -1,0 +1,8 @@
+{
+  name: "42patcher",
+  command: "patcher",
+  module: "./index.js",
+  icon: "/42/assets/icons/32x32/apps/settings.png",
+  about: "./about.md", // why tf doesnt this work
+  authors: "stretch07"
+}
