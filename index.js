@@ -1,3 +1,4 @@
+// welcome to import hell, we hope you enjoy your stay
 import { checksum } from "/42/lib/algo/checksum.js";
 import { dialog, confirm } from "/42/ui/layout/dialog.js";
 import { toast } from "/42/ui/layout/toast.js";
@@ -9,7 +10,7 @@ import { fs } from "/42/api/fs.js";
 const { parse } = JSON5;
 
 const BASE_URL = "https://win93.xyz";
-const PATCHES_URL = "https://win93.xyz/patches.json5";
+const PATCHES_URL = "https://win93.xyz/patches.json5"; // change url when app is updated
 const STORAGE_PATH = "~/config/42patcher.json5";
 const STORAGE_PATCHES_PATH = "~/config/42patcher-patches.json5";
 
@@ -44,7 +45,7 @@ async function loadPatches() {
   } catch {}
 
   if (!saved || !Array.isArray(saved) || patchesDiffer(networkPatches, saved)) {
-    const useNew = await confirm("New patches available. Use updated patchlist?", {
+    const useNew = await confirm("%md New patches available. Use updated patchlist? **Note: you should disable all your patches before updating the patchlist. If you haven't disabled them, click cancel. If this is your first time using 42patcher, click OK.**", {
       label: "42patcher",
       picto: "settings",
     });
@@ -54,9 +55,10 @@ async function loadPatches() {
     } else if (saved) {
       patches = saved;
     } else {
+      // this is really hacky but i love it
       patches = [{
         id: "no_patches",
-        description: "No patches available. Reopen 42patcher to check for updates.",
+        description: "No patches available. **Reopen 42patcher and click OK to check for patchlist updates.**",
         files: [],
       }]
     }
@@ -82,10 +84,30 @@ async function fetchPatchContent(patchPath) {
   return res.text();
 }
 
+function backupPath(patch, file) {
+  const rel = file.path.replace(/^\/+/, "");
+  return `~/config/42patcher/backups/${patch.id}/${rel}`;
+}
+
 async function enablePatch(patch) {
   for (const file of getPatchFiles(patch)) {
     if (file.path && file.patch) {
-      //await toast("Applying patch: " + file.path, { label: "42patcher" });
+      const backup = backupPath(patch, file);
+      try {
+        // @TODO find 42-native way to autocreate directories
+        if (!(await fs.isFile(backup))) {
+          const original = await fs.readText(file.path);
+          const dirs = backup.split("/");
+          let dir = "";
+          for (const seg of dirs.slice(0, -1)) {
+            dir += "/" + seg;
+            try {
+              await fs.writeDir(dir);
+            } catch {}
+          }
+          await fs.write(backup, original);
+        }
+      } catch {}
       const content = await fetchPatchContent(file.patch);
       await fs.write(file.path, content);
       await toast("Patch applied: " + file.path, { label: "42patcher" });
@@ -96,14 +118,11 @@ async function enablePatch(patch) {
 async function disablePatch(patch) {
   for (const file of getPatchFiles(patch)) {
     if (file.path) {
+      const backup = backupPath(patch, file);
       try {
-        //await toast("Restoring original file: " + file.path, { label: "42patcher" });
-        const res = await http.get(file.path, {
-          fresh: true,
-          ignoreFileSystem: true,
-        });
-        const original = await res.text();
+        const original = await fs.readText(backup);
         await fs.write(file.path, original);
+        await fs.delete(backup); // cleanup
         await toast("Original file restored: " + file.path, { label: "42patcher" });
       } catch {
         await toast("Failed to restore original file: " + file.path, {
@@ -137,7 +156,7 @@ function buildContent() {
           },
 
           {
-            tag: "checkbox",
+            tag: "checkbox", //wtf
             label: "Enable",
             value: Boolean(patchState[patch.id]),
             created(el) {
@@ -160,7 +179,7 @@ function patchIds(list) {
 }
 
 function patchesDiffer(a, b) {
-  const arrA = Array.from(a || []);
+  const arrA = Array.from(a || []); //system stores in weird proxy(array) format
   const arrB = Array.from(b || []);
   if (arrA.length !== arrB.length) return true;
   const idsA = patchIds(arrA);
