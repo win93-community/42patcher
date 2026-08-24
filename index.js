@@ -22,7 +22,7 @@ function getPatchFiles(patch) {
 
   // shorthand
   if (patch.path)
-    return [{ path: patch.path, hash: patch.hash, patch: patch.patch }];
+    return [{ path: patch.path, patch: patch.patch }];
   return [];
 }
 
@@ -52,8 +52,11 @@ async function loadPatches() {
     if (useNew) {
       await fs.write(STORAGE_PATCHES_PATH, JSON5.stringify(networkPatches));
       patches = networkPatches;
+
+      await toast("Patches updated!")
     } else if (saved) {
       patches = saved;
+      await toast("Patches not updated!")
     } else {
       // this is really hacky but i love it
       patches = [{
@@ -64,18 +67,6 @@ async function loadPatches() {
     }
   } else {
     patches = saved;
-  }
-
-  for (const patch of patches) {
-    const files = getPatchFiles(patch);
-    for (const file of files) {
-      if (file.path && !file.hash) {
-        try {
-          const content = await fs.readText(file.path);
-          file.hash = await checksum(content, { output: "hex" });
-        } catch {}
-      }
-    }
   }
 }
 
@@ -181,10 +172,15 @@ function patchIds(list) {
 function patchesDiffer(a, b) {
   const arrA = Array.from(a || []); //system stores in weird proxy(array) format
   const arrB = Array.from(b || []);
-  if (arrA.length !== arrB.length) return true;
-  const idsA = patchIds(arrA);
-  const idsB = patchIds(arrB);
-  return idsA.some((id, i) => id !== idsB[i]);
+  const SarrA = JSON.stringify(arrA)
+  const SarrB = JSON.stringify(arrB)
+
+  if (SarrA !== SarrB) {
+    console.log("tjey dont match")
+    return true;
+  }
+
+  return false;
 }
 
 export async function launchApp(app) {
