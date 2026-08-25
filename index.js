@@ -176,7 +176,7 @@ function patchesDiffer(a, b) {
   const SarrB = JSON.stringify(arrB)
 
   if (SarrA !== SarrB) {
-    console.log("tjey dont match")
+    //console.log("tjey dont match")
     return true;
   }
 
